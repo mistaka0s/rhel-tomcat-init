@@ -283,30 +283,18 @@ case "$1" in
                 log_success_msg "${NAME} (pid ${kpid}) is running..."
                 RETVAL="0"
             else
-# The pid file exists but the process is not running
-               log_warning_msg "PID file exists, but process is not running"
-               RETVAL="1"
+                if [ -s /var/lock/subsys/${NAME} ]; then
+                   log_failure_msg "${NAME} lockfile exists but process is not running"
+                   RETVAL="2"
+                else
+                    log_warning_msg "PID file exists, but process is not running"
+                    RETVAL="1"
+                fi
             fi
         else
-            pid="$(/usr/bin/pgrep -d , -u ${TOMCAT_USER} -G ${TOMCAT_USER} java)"
-            if [ -z "$pid" ]; then
-#               status ${NAME}
-#               RETVAL="$?"
-                log_success_msg "${NAME} is stopped"
-                RETVAL="3"
-            else
-                log_success_msg "${NAME} (pid $pid) is running..."
-                RETVAL="0"
-            fi
+           log_success_msg "${NAME} is stopped"
+           RETVAL="3"
         fi
-         if [ -s /var/lock/subsys/${NAME} ]; then
-            pid="$(/usr/bin/pgrep -d , -u ${TOMCAT_USER} -G ${TOMCAT_USER} java)"
-# The lockfile exists but the process is not running
-            if [ -z "$pid" ]; then
-               log_failure_msg "${NAME} lockfile exists but process is not running"
-               RETVAL="2"
-            fi
-         fi
         ;;
     version)
         ${TOMCAT_SCRIPT} version
