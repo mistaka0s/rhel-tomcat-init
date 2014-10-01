@@ -27,7 +27,6 @@ if [ -r /lib/lsb/init-functions ]; then
 else
     exit 1
 fi
-
 DISTRIB_ID=`lsb_release -i -s 2>/dev/null`
 
 NAME="$(basename $0)"
@@ -43,7 +42,7 @@ if [ -x "/sbin/runuser" ]; then
 else
     SU="/bin/su -s /bin/sh"
 fi
-
+set -a
 # Path to the tomcat launch script
 TOMCAT_SCRIPT="/usr/sbin/tomcat"
 
@@ -76,8 +75,7 @@ export TOMCAT_LOG
 
 CATALINA_PID="/var/run/${NAME}.pid"
 # Add CATALINA_PID to environment
-export CATALINA_PID
-
+set +a
 
 RETVAL="0"
 
@@ -164,8 +162,8 @@ function start() {
      return
    fi
    if [ -f "/var/lock/subsys/${NAME}" ]; then
-        if [ -s "/var/run/${NAME}.pid" ]; then
-            read kpid < /var/run/${NAME}.pid
+        if [ -s "${CATALINA_PID}" ]; then
+            read kpid < ${CATALINA_PID}
 #           if checkpid $kpid 2>&1; then
             if [ -d "/proc/${kpid}" ]; then
                 log_success_msg
@@ -195,7 +193,6 @@ function start() {
         $SU - $TOMCAT_USER -c "${TOMCAT_SCRIPT} start-security" \
             >> ${TOMCAT_LOG} 2>&1 || RETVAL="4"
     else
-       
        [ "$RETVAL" -eq "0" ] && $SU $TOMCAT_USER -c "${TOMCAT_SCRIPT} start" >> ${TOMCAT_LOG} 2>&1 || RETVAL="4"
     fi
     if [ "$RETVAL" -eq "0" ]; then 
@@ -215,12 +212,12 @@ function stop() {
       parseOptions
       if [ "$RETVAL" -eq "0" ]; then
          touch /var/lock/subsys/${NAME} 2>&1 || RETVAL="4"
-         [ "$RETVAL" -eq "0" ] && $SU - $TOMCAT_USER -c "${TOMCAT_SCRIPT} stop" >> ${TOMCAT_LOG} 2>&1 || RETVAL="4"
+         [ "$RETVAL" -eq "0" ] && $SU $TOMCAT_USER -c "${TOMCAT_SCRIPT} stop" >> ${TOMCAT_LOG} 2>&1 || RETVAL="4"
       fi
       if [ "$RETVAL" -eq "0" ]; then
          count="0"
-         if [ -s "/var/run/${NAME}.pid" ]; then
-            read kpid < /var/run/${NAME}.pid
+         if [ -s "${CATALINA_PID}" ]; then
+            read kpid < ${CATALINA_PID}
             until [ "$(ps --pid $kpid | grep -c $kpid)" -eq "0" ] || \
                       [ "$count" -gt "$SHUTDOWN_WAIT" ]; do
                     if [ "$SHUTDOWN_VERBOSE" = "true" ]; then
@@ -237,9 +234,9 @@ function stop() {
                 fi
                 log_success_msg
             fi
-            rm -f /var/lock/subsys/${NAME} /var/run/${NAME}.pid
+            rm -f /var/lock/subsys/${NAME} ${CATALINA_PID}
         else
-            log_failure_msg
+            log_failure_msg "${TOMCAT_PROG} in not running"
             RETVAL="4"
         fi
     else
@@ -271,7 +268,7 @@ case "$1" in
         start
         ;;
     condrestart|try-restart)
-        if [ -s "/var/run/${NAME}.pid" ]; then
+        if [ -s "${CATALINA_PID}" ]; then
             stop
             start
         fi
@@ -280,14 +277,14 @@ case "$1" in
         RETVAL="3"
         ;;
     force-reload)
-        if [ -s "/var/run/${NAME}.pid" ]; then
+        if [ -s "${CATALINA_PID}" ]; then
             stop
             start
         fi
         ;;
     status)
-        if [ -s "/var/run/${NAME}.pid" ]; then
-            read kpid < /var/run/${NAME}.pid
+        if [ -s "${CATALINA_PID}" ]; then
+            read kpid < ${CATALINA_PID}
             if [ -d "/proc/${kpid}" ]; then
                 log_success_msg "${NAME} (pid ${kpid}) is running..."
                 RETVAL="0"
