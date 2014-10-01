@@ -16,6 +16,7 @@
 #
 # - originally written by Henri Gomez, Keith Irwin, and Nicolas Mailhot
 # - heavily rewritten by Deepak Bhole and Jason Corley
+# - modified by Chao Luan
 #
 
 ## Source function library.
@@ -43,7 +44,11 @@ else
     SU="/bin/su -s /bin/sh"
 fi
 
+# Path to the tomcat launch script
+TOMCAT_SCRIPT="/usr/sbin/tomcat"
+
 # Get the tomcat config (use this for environment specific settings)
+
 TOMCAT_CFG="/etc/tomcat/tomcat.conf"
 if [ -r "$TOMCAT_CFG" ]; then
     . $TOMCAT_CFG
@@ -52,13 +57,12 @@ fi
 # Get instance specific config file
 if [ -r "/etc/sysconfig/${NAME}" ]; then
     . /etc/sysconfig/${NAME}
+    TOMCAT_CFG="/etc/sysconfig/${NAME}"
 fi
-
+# Add TOMCAT_CFG to environment
+export TOMCAT_CFG
 # Define which connector port to use
 CONNECTOR_PORT="${CONNECTOR_PORT:-8080}"
-
-# Path to the tomcat launch script
-TOMCAT_SCRIPT="/usr/sbin/tomcat"
 
 # Tomcat program name
 TOMCAT_PROG="${NAME}"
@@ -67,7 +71,12 @@ TOMCAT_PROG="${NAME}"
 TOMCAT_USER="${TOMCAT_USER:-tomcat}"
 
 # Define the tomcat log file
-TOMCAT_LOG="${TOMCAT_LOG:-${CATALINA_HOME}/logs/${NAME}-initd.log}"
+TOMCAT_LOG="${TOMCAT_LOG:-${CATALINA_BASE}/logs/${NAME}-initd.log}"
+export TOMCAT_LOG
+
+CATALINA_PID="/var/run/${NAME}.pid"
+# Add CATALINA_PID to environment
+export CATALINA_PID
 
 
 RETVAL="0"
@@ -121,6 +130,12 @@ function makeHomeDir() {
         ln -fs /usr/share/java/tomcat ${CATALINA_HOME}/lib
         ln -fs /usr/share/tomcat/webapps ${CATALINA_HOME}/webapps
         chown ${TOMCAT_USER}:${TOMCAT_USER} /var/log/${NAME}
+        # If CATALINA_HOME doesn't exist modify port number so that
+        # multiple instances don't interfere with each other
+        findFreePorts
+        sed -i -e "s/8005/${randomPort1}/g" -e "s/8080/${CONNECTOR_PORT}/g" \
+            -e "s/8009/${randomPort2}/g" -e "s/8443/${randomPort3}/g" \
+            ${CATALINA_HOME}/conf/server.xml
     fi
 }
 
@@ -162,7 +177,7 @@ function start() {
         fi
     fi
     # fix permissions on the log and pid files
-    export CATALINA_PID="/var/run/${NAME}.pid"
+    
     touch $CATALINA_PID 2>&1 || RETVAL="4"
     if [ "$RETVAL" -eq "0" -a "$?" -eq "0" ]; then 
       chown ${TOMCAT_USER}:${TOMCAT_USER} $CATALINA_PID
@@ -174,12 +189,6 @@ function start() {
     if [ "$CATALINA_HOME" != "/usr/share/tomcat" -a "$RETVAL" -eq "0" ]; then
         # Create a tomcat directory if it doesn't exist
         makeHomeDir
-        # If CATALINA_HOME doesn't exist modify port number so that
-        # multiple instances don't interfere with each other
-        findFreePorts
-        sed -i -e "s/8005/${randomPort1}/g" -e "s/8080/${CONNECTOR_PORT}/g" \
-            -e "s/8009/${randomPort2}/g" -e "s/8443/${randomPort3}/g" \
-            ${CATALINA_HOME}/conf/server.xml
     fi
     parseOptions
     if [ "$RETVAL" -eq "0" -a "$SECURITY_MANAGER" = "true" ]; then
@@ -187,7 +196,7 @@ function start() {
             >> ${TOMCAT_LOG} 2>&1 || RETVAL="4"
     else
        
-       [ "$RETVAL" -eq "0" ] && $SU - $TOMCAT_USER -c "${TOMCAT_SCRIPT} start" >> ${TOMCAT_LOG} 2>&1 || RETVAL="4"
+       [ "$RETVAL" -eq "0" ] && $SU $TOMCAT_USER -c "${TOMCAT_SCRIPT} start" >> ${TOMCAT_LOG} 2>&1 || RETVAL="4"
     fi
     if [ "$RETVAL" -eq "0" ]; then 
         log_success_msg
